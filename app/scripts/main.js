@@ -25,11 +25,37 @@ console.log('\'Allo \'Allo!');
   var rectBase = two.makeRectangle(gridSize.x*0.5,gridSize.y*0.5,gridSize.x,gridSize.y);
   rectBase.fill = '#fff';
 
+  var barsLayer = new Two.Group();
+  two.add(barsLayer);
 
-  function BeatMeter(x){
+  var bgGrid = new Two.Group();
+  for (var i = beats; i >= 0; i--) {
+    var f = i/(beats);
+    var l = new Two.Line(f*gridSize.x,0,f*gridSize.x,gridSize.y);
+    l.linewidth = 3;
+    bgGrid.add(l);
+  };
+  bgGrid.translation.x = inset;
+  bgGrid.translation.y = inset;
+  two.add(bgGrid);
+
+  var pathLayer = new Two.Group();
+  two.add(pathLayer);
+
+  var positionMarker = new Two.Group();
+  var positionMarkerLine = new Two.Line(0,0,0,gridSize.y);
+  positionMarker.add(positionMarkerLine);
+  positionMarker.stroke = '#f00';
+  positionMarker.linewidth = 3;
+  positionMarker.translation.x = inset;
+  positionMarker.translation.y = inset;
+  two.add(positionMarker);
+
+  function BeatMeter(x,gridSize,color){
+    this.color = color;
     this.rect = new Two.Rectangle(x,gridSize.y,gridSize.x / beats, 0);
     this.rect.stroke = "none";
-    this.rect.fill = "#f50";
+    this.rect.fill = this.color;
     this.rect.translation.y = gridSize.y + inset;
     this.hitTime = 0;
     this.v = 0;
@@ -52,62 +78,67 @@ console.log('\'Allo \'Allo!');
     this.rect.vertices[1].y = -(1 - f) * this.v;
   };
 
-  function BeatSet(){
+  function BeatSet(color, gridSize){
+    this.color = color;
+    this.gridSize = gridSize;
+    this.beatMeters = [];
 
+
+    this.beatMeterGroup = new Two.Group();
+    for (var i = 0; i < beats; i++) {
+      this.beatMeters.push(new BeatMeter(i/beats * this.gridSize.x + this.gridSize.x/beats * 0.5,this.gridSize,this.color));
+      this.beatMeterGroup.add(this.beatMeters[this.beatMeters.length-1].rect);
+    };
+
+    this.beatMeterGroup.translation.x = inset;
+    barsLayer.add(this.beatMeterGroup);
+
+    this.volPath = new Two.Path([],false,true);
+    for (var i = 0; i < beats+1; i++) {
+      var f = i/(beats);
+      var x = f*gridSize.x;
+      var y = gridSize.y * rnd();
+      this.volPath.vertices.push(new Two.Anchor(x,y,x,y,x,y));
+    };
+
+    var cap = this.volPath.vertices[this.volPath.vertices.length-1].clone();
+    cap.y = this.volPath.vertices[0].y;
+    cap.controls.left.y = cap.y;
+    cap.controls.right.y = cap.y;
+
+    this.volPath.stroke = this.color;
+    this.volPath.fill = 'none';
+    this.volGroup = new Two.Group();
+    this.volGroup.add(this.volPath);
+    this.volGroup.translation.x = this.volGroup.translation.y = inset;
+    pathLayer.add(this.volGroup);
   }
-
-  var beatMeters = [];
-  var beatsGroup = new Two.Group();
-  for (var i = 0; i < beats; i++) {
-    beatMeters.push(new BeatMeter(i/beats * gridSize.x + gridSize.x/beats * 0.5));
-    beatsGroup.add(beatMeters[beatMeters.length-1].rect);
+  BeatSet.prototype.update = function(now) {
+    this.beatMeters.forEach(function(v){ v.update(now); });
   };
-  beatsGroup.translation.x = inset;
-  two.add(beatsGroup);
-
-
-  var bgGrid = new Two.Group();
-  for (var i = beats; i >= 0; i--) {
-    var f = i/(beats);
-    var l = new Two.Line(f*gridSize.x,0,f*gridSize.x,gridSize.y);
-    l.linewidth = 3;
-    bgGrid.add(l);
+  BeatSet.prototype.hit = function(beat,now) {
+    this.beatMeters[beat].hit(this.gridSize.y - this.volPath.vertices[beat].y,now);
   };
-  bgGrid.translation.x = inset;
-  bgGrid.translation.y = inset;
-  two.add(bgGrid);
-
-  var volPath = new Two.Path([],false,true);
-  for (var i = 0; i < beats+1; i++) {
-    var f = i/(beats);
-    var x = f*gridSize.x;
-    var y = gridSize.y * rnd();
-    volPath.vertices.push(new Two.Anchor(x,y,x,y,x,y));
+  BeatSet.prototype.updateBar = function(bar,val) {
+    this.volPath.vertices[bar].y = mouseY - inset;
+    if(bar == 0){
+      this.volPath.vertices[this.volPath.vertices.length - 1].y = val;
+    }
+  };
+  BeatSet.prototype.setActive = function() {
+    pathLayer.remove(this.volGroup);
+    pathLayer.add(this.volGroup);
+    barsLayer.remove(this.beatMeterGroup);
+    barsLayer.add(this.beatMeterGroup);
   };
 
-  var cap = volPath.vertices[volPath.vertices.length-1].clone();
-  cap.y = volPath.vertices[0].y;
-  cap.controls.left.y = cap.y;
-  cap.controls.right.y = cap.y;
+  var beatSets = [];
+  var colors = ['#f60','#06f','#0f6'];
+  colors.forEach(function(c){
+    beatSets.push(new BeatSet(c,gridSize));
+  })
 
-  volPath.stroke = '#083';
-  volPath.fill = 'none';
-  var volGroup = new Two.Group();
-  volGroup.add(volPath);
-  volGroup.translation.x = volGroup.translation.y = inset;
-  two.add(volGroup);
-
-
-
-  var positionMarker = new Two.Group();
-  var positionMarkerLine = new Two.Line(0,0,0,gridSize.y);
-  positionMarker.add(positionMarkerLine);
-  positionMarker.stroke = '#f00';
-  positionMarker.linewidth = 3;
-  positionMarker.translation.x = inset;
-  positionMarker.translation.y = inset;
-  two.add(positionMarker);
-
+  var activeBeatSet = beatSets[0];
 
   var bpm = 120;
   var bps = 60 / bpm;
@@ -131,12 +162,15 @@ console.log('\'Allo \'Allo!');
     measureProg = progX / gridSize.x;
 
     if(barBeat !== lastbeat){
-      beatMeters[barBeat].hit(gridSize.y - volPath.vertices[barBeat].y,now);
+      beatSets.forEach(function(bs){
+        bs.hit(barBeat,now);
+      });
     }
 
     lastbeat = barBeat;
-
-    beatMeters.forEach(function(v){ v.update(now); });
+    beatSets.forEach(function(bs){
+      bs.update(now);
+    });
 
     if(mouseDown && mouseX !== null && mouseY !== null
       && mouseX >= inset && mouseX <= inset + gridSize.x
@@ -145,10 +179,11 @@ console.log('\'Allo \'Allo!');
       x /= gridSize.x;
       x *= beats;
       x = Math.floor(x);
-      volPath.vertices[x].y = mouseY - inset;
-      if(x == 0){
-        volPath.vertices[volPath.vertices.length - 1].y = mouseY - inset;
-      }
+      activeBeatSet.updateBar(x,mouseY - inset);
+      // volPath.vertices[x].y = mouseY - inset;
+      // if(x == 0){
+      //   volPath.vertices[volPath.vertices.length - 1].y = mouseY - inset;
+      // }
     }
 
     positionMarker.translation.x = inset + progX;
@@ -172,9 +207,19 @@ console.log('\'Allo \'Allo!');
   $(window).on('mouseup',removeTracker);
 
 
+  var controls = document.createElement('div');
+  var le = colors.map(function(c,i){ return '<li style="background-color:'+c+';">'+(i+1)+'</li>'})
+  controls.innerHTML = '<ul class="selector">'+le.join('')+'</ul>'
+  document.body.appendChild(controls);
+
+  $('.selector li').on('click',function(e){
+    var i = parseInt(e.currentTarget.innerHTML)-1
+    activeBeatSet = beatSets[i];
+    activeBeatSet.setActive();
+  });
   //3d stuff
   var scene = new THREE.Scene();
-  var camera = new THREE.PerspectiveCamera( 75, window.innerWidth / (window.innerHeight-400), 0.1, 1000 );
+  var camera = new THREE.PerspectiveCamera( 75, window.innerWidth / (window.innerHeight-450), 0.1, 1000 );
 
   var renderer = new THREE.WebGLRenderer();
   renderer.setSize( window.innerWidth, window.innerHeight - 400 );
