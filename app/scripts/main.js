@@ -32,7 +32,7 @@
   rectBase.fill = '#333';
 
   var specBg = spec.makeRectangle(gridSize.x*0.5,gridSize.y*0.5,gridSize.x,gridSize.y);
-  specBg.fill = '#000';
+  specBg.fill = '#666';
 
   var barsLayer = new Two.Group();
   two.add(barsLayer);
@@ -88,7 +88,7 @@
     this.hitTime = 0;
     this.v = 0;
   }
-  BeatMeter.prototype.hitDuration = 1.5;
+  BeatMeter.prototype.hitDuration = 6;
   BeatMeter.prototype.hit = function(v, now) {
     this.v = v;
     if(typeof now === 'undefined'){
@@ -115,7 +115,7 @@
     this.color = color;
     this.gridSize = gridSize;
     this.beatMeters = [];
-
+    this.bar = 0;
 
     this.beatMeterGroup = new Two.Group();
     this.specBeatMeterGroup = new Two.Group();
@@ -150,14 +150,24 @@
     this.volGroup.add(this.volPath);
     this.volGroup.translation.x = this.volGroup.translation.y = inset;
     pathLayer.add(this.volGroup);
+
+    this.synth = new Tone.SimpleSynth();
+    this.synth.toMaster();
+
   }
-  BeatSet.prototype.update = function(now) {
+  BeatSet.prototype.update = function(bar,now) {
+    this.bar = bar;
     this.beatMeters.forEach(function(v){ v.update(now); });
   };
   BeatSet.prototype.hit = function(beat,now) {
-    this.beatMeters[beat].hit(this.gridSize.y - this.volPath.vertices[beat].y,now);
+    var f = (this.gridSize.y - this.volPath.vertices[beat].y) / this.gridSize.y;
+    this.beatMeters[beat].hit(f * this.gridSize.y,now);
+    var notes = ["C4", "E4", "G4", "A4"];
+    var note = notes[Math.floor(f*notes.length)];
+    this.synth.triggerAttackRelease(note, 0.25);
   };
   BeatSet.prototype.updateBar = function(bar,val) {
+
     this.volPath.vertices[bar].y = mouseY - inset;
     if(bar == 0){
       this.volPath.vertices[this.volPath.vertices.length - 1].y = val;
@@ -174,9 +184,12 @@
       this.volPath.linewidth = 1;
     }
   };
+  BeatSet.prototype.getVal = function(){
+    return this.volPath.vertices[this.bar].y;
+  }
 
   var beatSets = [];
-  var colors = ['#f60','#06f','#f09'];
+  var colors = ['#f09','#0f6','#06f'];
   colors.forEach(function(c){
     beatSets.push(new BeatSet(c,gridSize));
   })
@@ -192,6 +205,9 @@
   var nextBeat = startTime ;
 
   var lastbeat = 16;
+
+
+
 
   var measureProg;
   two.bind('update', function() {
@@ -212,7 +228,7 @@
 
     lastbeat = barBeat;
     beatSets.forEach(function(bs){
-      bs.update(now);
+      bs.update(barBeat, now);
     });
 
     if(mouseDown && mouseX !== null && mouseY !== null
@@ -304,15 +320,59 @@
   specTexture.format = THREE.RGBFormat;
   specTexture.generateMipmaps = false;
 
+  var urls = [
+  '/images/pos-x.png',
+  '/images/neg-x.png',
+  '/images/pos-y.png',
+  '/images/neg-y.png',
+  '/images/pos-z.png',
+  '/images/neg-z.png'
+],
+
+// wrap it up into the object that we need
+  cubemap = THREE.ImageUtils.loadTextureCube(urls);
+
+// set the format, likely RGB unless you've gone crazy
+cubemap.format = THREE.RGBFormat;
+
   var parameters = { color: 0xffffff, map: texture, specularMap:specTexture, shininess: 100 };
   var material_base = new THREE.MeshPhongMaterial( parameters );
+  var phongShader = THREE.ShaderLib.phong;
+  var uniforms = THREE.UniformsUtils.clone(phongShader.uniforms);
+  uniforms['map'].value = texture;
+  uniforms['specularMap'].value = specTexture;
+  uniforms['displacementMap'].value = specTexture;
+  uniforms['displacementScale'].value = 0.05;
+  uniforms['shininess'].value = 100;
+  uniforms['envMap'].value = cubemap;
+  uniforms['emissiveMap'].value = specTexture;
+  uniforms['emissive'].value.r = beatSets[0].getVal()/gridSize.y;
+  uniforms['emissive'].value.g = beatSets[1].getVal()/gridSize.y;
+  uniforms['emissive'].value.b = beatSets[2].getVal()/gridSize.y;
 
-  var mesh = new THREE.Mesh(new THREE.SphereGeometry( 2, 32, 64 ),material_base);
+
+  material_base = new THREE.ShaderMaterial({
+    uniforms: uniforms,
+    vertexShader: phongShader.vertexShader,
+    fragmentShader: phongShader.fragmentShader,
+    lights: true
+  });
+  material_base.map = true;
+  material_base.specularMap = true;
+  material_base.displacementMap = true;
+  material_base.envMap = true;
+  material_base.emissiveMap = false;
+  // console.log(phongShader.vertexShader);
+  // console.log(phongShader.fragmentShader);
+
+  var mesh = new THREE.Mesh(new THREE.SphereGeometry( 2, 128, 64 ),material_base);
   scene.add(mesh);
 
   function render() {
       requestAnimationFrame(render);
       // controls.update();
+      material_base.uniforms['emissive'].value.setRGB(1 - beatSets[0].getVal()/gridSize.y, 1 - beatSets[1].getVal()/gridSize.y, 1 - beatSets[2].getVal()/gridSize.y).offsetHSL(0,-0.5,0);;
+
       texture.needsUpdate = true;
       specTexture.needsUpdate = true;
       mesh.rotation.y = -measureProg * Math.PI * 2 + Math.PI * 0.5;
